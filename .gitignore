@@ -12,8 +12,11 @@ venv/
 .env
 .env.*
 !.env.example
+frontend/.env.local
+frontend/.env.*.local
 credentials.json
 token.json
+token*.json
 *.pickle
 *.pem
 
@@ -27,3 +30,9 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+.neon
+.vercel/
+backend/local-credentials.json
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal

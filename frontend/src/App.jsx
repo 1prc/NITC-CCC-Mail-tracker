@@ -1,21 +1,74 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { request, roomCodes, timeToMinutes, todayIST } from './api'
+import AdminDashboard from './pages/AdminDashboard'
+import FacultyDashboard from './pages/FacultyDashboard'
 
-const API = '/api/v1'
-const roomCodes = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6']
-const blankForm = { room_code: 'T1', booking_date: '', start_time: '08:00', end_time: '09:00', purpose: '' }
-
-async function request(path, { token, ...options } = {}) {
-  const response = await fetch(`${API}${path}`, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
-  })
-  const data = response.status === 204 ? null : await response.json().catch(() => null)
-  if (!response.ok) throw new Error(data?.detail || `Request failed (${response.status})`)
-  return data
+function dateLabel(value, options = { weekday: 'short', day: 'numeric', month: 'short' }) {
+  return new Intl.DateTimeFormat('en-IN', { ...options, timeZone: 'Asia/Kolkata' }).format(new Date(`${value}T12:00:00+05:30`))
 }
 
-function todayString() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date())
+function AvailabilityPage({ schedule, days, startDate, setStartDate, rangeDays, setRangeDays, shiftRange, goToday, loading, availabilityState }) {
+  const byRoomDate = new Map(schedule.map((entry) => [`${entry.room_code}-${entry.date}`, entry]))
+  const rangeEnd = days[days.length - 1]
+  return <div className="space-y-6">
+    <section className="rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8"><div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-sm font-medium text-teal-300">Central Computer Centre</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Terminal room schedule</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">Browse multiple weeks. Bars show confirmed bookings and maintenance on a half-hour timeline in IST.</p></div><div className="flex flex-wrap items-end gap-3"><label className="text-sm text-slate-300">Range<select className="ml-2 rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-white" value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value))}><option value={7}>1 week</option><option value={14}>2 weeks</option><option value={28}>4 weeks</option></select></label><label className="text-sm text-slate-300">Starting date<input className="ml-2 rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-white" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label></div></div><div className="mt-5 flex flex-wrap items-center gap-2"><button className="rounded-md border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800" onClick={() => shiftRange(-1)}>← Previous</button><button className="rounded-md border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800" onClick={goToday}>Today</button><button className="rounded-md border border-slate-600 px-3 py-2 text-sm hover:bg-slate-800" onClick={() => shiftRange(1)}>Next →</button><span className="ml-1 text-sm text-slate-300">{dateLabel(startDate, { day: 'numeric', month: 'short', year: 'numeric' })} – {dateLabel(rangeEnd, { day: 'numeric', month: 'short', year: 'numeric' })}</span></div></section>
+    {availabilityState !== 'ready' && <div role="status" className={`rounded-lg px-4 py-3 text-sm ${availabilityState === 'error' ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-700'}`}>{availabilityState === 'error' ? 'Availability could not be confirmed. Refresh after reconnecting to the database.' : 'Loading confirmed bookings…'}</div>}
+    {days.map((day) => {
+      const dayEntries = roomCodes.map((room) => ({ room, ...(byRoomDate.get(`${room}-${day}`) || { bookings: [], maintenance: [] }) }))
+      const bookingCount = dayEntries.reduce((count, entry) => count + entry.bookings.length, 0)
+      const maintenanceCount = dayEntries.reduce((count, entry) => count + (entry.maintenance || []).length, 0)
+      return <section key={day} className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><div className="min-w-[900px]"><div className="flex items-center justify-between border-b bg-slate-50 px-5 py-3"><div><h3 className="font-semibold">{dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3><p className="text-xs text-slate-500">{availabilityState === 'ready' ? `${bookingCount} booked · ${maintenanceCount} under maintenance` : availabilityState === 'loading' ? 'Loading schedule…' : 'Availability unknown'}</p></div><span className="text-xs text-slate-500">IST · 8 AM–8 PM</span></div>
+        <div className="grid grid-cols-[60px_minmax(0,1fr)] items-end gap-4 px-4 pt-4"><span aria-hidden="true" /><div className="relative mb-2 h-5 text-[10px] text-slate-600">{Array.from({ length: 13 }, (_, index) => { const hour = 8 + index; const label = `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`; return <span key={hour} className={`absolute whitespace-nowrap ${index === 0 ? '' : index === 12 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${(index / 12) * 100}%` }}>{label}</span> })}</div></div>
+        <div className="divide-y">{dayEntries.map(({ room, bookings, maintenance = [] }) => <div key={room} className="grid grid-cols-[60px_minmax(0,1fr)] items-center gap-4 px-4 py-2"><span className="text-sm font-semibold">{room}</span><div>
+          <div className={`relative h-11 rounded-md ${availabilityState === 'ready' ? 'bg-teal-50' : 'bg-slate-100'}`} style={{ backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(8.333333% - 1px), #cbd5e1 calc(8.333333% - 1px), #cbd5e1 8.333333%)' }} aria-label={`${room} timeline for ${day}`}>
+            {availabilityState === 'ready' && bookings.map((booking) => <TimelineBar key={`booked-${booking.id}`} item={booking} tone="rose" label="Confirmed booking" />)}
+            {availabilityState === 'ready' && maintenance.map((item) => <TimelineBar key={`maintenance-${item.id}`} item={item} tone="amber" label="Under maintenance" />)}
+          </div>
+          {availabilityState === 'ready' && (bookings.length > 0 || maintenance.length > 0) && <div className="mt-1 flex flex-wrap gap-1">{bookings.map((booking) => <span key={`b-${booking.id}`} className="rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-900">Booked {toAmPm(booking.start)}–{toAmPm(booking.end)}</span>)}{maintenance.map((item) => <span key={`m-${item.id}`} className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">Maintenance {toAmPm(item.start)}–{toAmPm(item.end)}</span>)}</div>}
+        </div></div>)}</div>
+      </div><div className="flex flex-wrap gap-4 border-t px-5 py-3 text-xs text-slate-600"><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-teal-200" />Available</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-rose-400" />Booked</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-amber-400" />Under maintenance</span>{loading && <span className="ml-auto">Updating…</span>}</div></section>
+    })}
+  </div>
+}
+
+function TimelineBar({ item, tone, label }) {
+  const start = timeToMinutes(item.start)
+  const end = timeToMinutes(item.end)
+  const left = ((start - 480) / 720) * 100
+  const width = ((end - start) / 720) * 100
+  const colors = tone === 'amber' ? 'bg-amber-400 text-amber-950 ring-amber-500' : 'bg-rose-400 text-rose-950 ring-rose-500'
+  return <div title={`${toAmPm(item.start)}–${toAmPm(item.end)} IST · ${label}`} className={`absolute top-1 flex h-9 items-center justify-center overflow-visible rounded px-1 text-[10px] font-semibold ring-1 ${colors}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: '2px' }}><span className="pointer-events-none whitespace-nowrap rounded bg-white/85 px-1">{toAmPm(item.start)}–{toAmPm(item.end)}</span></div>
+}
+
+function toAmPm(value) {
+  const [hour, minute] = value.split(':').map(Number)
+  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+}
+
+function LoginDrawer({ role, onClose, onLogin }) {
+  const [credentials, setCredentials] = useState({ username: '', password: '' })
+  const [error, setError] = useState('')
+  const [collapsed, setCollapsed] = useState(false)
+  async function submit(event) {
+    event.preventDefault()
+    setError('')
+    const result = await onLogin(credentials, role)
+    if (result) setError(result)
+  }
+  const roleName = role === 'FACULTY' ? 'Faculty' : 'Administrator'
+  return <>
+    {!collapsed && <button aria-label="Close sign in panel" className="fixed inset-0 z-40 cursor-default bg-slate-950/30" onClick={onClose} />}
+    <aside className={`fixed inset-y-0 right-0 z-50 border-l border-slate-200 bg-white shadow-2xl transition-[width] duration-200 ${collapsed ? 'w-14' : 'w-full sm:w-1/4 sm:min-w-[320px] sm:max-w-[440px]'}`} aria-label={`${roleName} sign in`}>
+      {collapsed ? <button className="flex h-full w-full flex-col items-center gap-3 bg-slate-900 py-5 text-white" onClick={() => setCollapsed(false)} aria-label="Expand sign in panel"><span className="text-xl">‹</span><span className="vertical-label text-xs font-semibold">{roleName} login</span></button> : <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b px-5 py-4"><div><p className="text-xs font-semibold uppercase tracking-wider text-teal-700">CCC Tracker</p><h2 className="mt-1 text-lg font-semibold">{roleName} login</h2></div><div className="flex gap-2"><button className="button-secondary px-3" title="Minimize panel" onClick={() => setCollapsed(true)}>−</button><button className="button-secondary px-3" title="Close panel" onClick={onClose}>×</button></div></div>
+        <form onSubmit={submit} className="flex flex-1 flex-col gap-4 p-5"><p className="text-sm leading-6 text-slate-600">Sign in with your CCC Tracker {roleName.toLowerCase()} account.</p><label className="field-label">Username<input className="input" autoComplete="username" value={credentials.username} onChange={(e) => setCredentials({ ...credentials, username: e.target.value })} required autoFocus /></label><label className="field-label">Password<input className="input" type="password" autoComplete="current-password" value={credentials.password} onChange={(e) => setCredentials({ ...credentials, password: e.target.value })} required /></label>{error && <p role="alert" className="rounded-md bg-rose-50 p-3 text-sm text-rose-800">{error}</p>}<button className="button-primary mt-1 w-full">Sign in as {roleName}</button><button type="button" className="mt-auto self-start text-sm text-slate-500 underline" onClick={onClose}>Back to schedule</button></form>
+      </div>}
+    </aside>
+  </>
+}
+
+function StudentPage() {
+  return <section className="rounded-xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-semibold">Student access</h2><p className="mt-2 text-sm leading-6 text-slate-600">The schedule above shows confirmed bookings and room maintenance. Student accounts are view-only.</p></section>
 }
 
 export default function App() {
@@ -23,121 +76,52 @@ export default function App() {
   const [user, setUser] = useState(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [login, setLogin] = useState({ username: '', password: '' })
-  const [startDate, setStartDate] = useState(todayString)
+  const [drawerRole, setDrawerRole] = useState(null)
+  const [page, setPage] = useState(() => window.location.hash.slice(1) || 'availability')
+  const [startDate, setStartDate] = useState(todayIST)
+  const [rangeDays, setRangeDays] = useState(14)
   const [schedule, setSchedule] = useState([])
-  const [requests, setRequests] = useState([])
-  const [pending, setPending] = useState([])
-  const [emailLogs, setEmailLogs] = useState([])
-  const [auditLogs, setAuditLogs] = useState([])
-  const [form, setForm] = useState({ ...blankForm, booking_date: todayString() })
-
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(`${startDate}T12:00:00+05:30`)
-    d.setDate(d.getDate() + i)
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d)
-  }), [startDate])
-
-  async function loadAvailability() {
-    try { setSchedule(await request(`/rooms/availability?from=${startDate}&days=7`)) }
-    catch (e) { setError(e.message) }
-  }
-
-  async function loadUser() {
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const [availabilityState, setAvailabilityState] = useState('loading')
+  const [availabilityVersion, setAvailabilityVersion] = useState(0)
+  const [adminVersion, setAdminVersion] = useState(0)
+  const days = useMemo(() => Array.from({ length: rangeDays }, (_, index) => { const date = new Date(`${startDate}T12:00:00+05:30`); date.setDate(date.getDate() + index); return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(date) }), [startDate, rangeDays])
+  const loadAvailability = useCallback(async () => { setAvailabilityLoading(true); setAvailabilityState('loading'); try { setSchedule(await request(`/rooms/availability?from=${startDate}&days=${rangeDays}`)); setAvailabilityState('ready'); setError('') } catch (loadError) { setAvailabilityState('error'); setError(loadError.message) } finally { setAvailabilityLoading(false) } }, [startDate, rangeDays])
+  const refreshAvailability = useCallback(() => setAvailabilityVersion((version) => version + 1), [])
+  const refreshAdmin = useCallback(() => setAdminVersion((version) => version + 1), [])
+  const onError = useCallback((message) => { setError(message); setNotice('') }, [])
+  const onNotice = useCallback((message) => { setNotice(message); setError(''); refreshAdmin() }, [refreshAdmin])
+  const navigate = useCallback((nextPage) => { window.location.hash = nextPage; setPage(nextPage); setError('') }, [])
+  useEffect(() => { loadAvailability() }, [loadAvailability, availabilityVersion])
+  useEffect(() => { const updatePage = () => setPage(window.location.hash.slice(1) || 'availability'); window.addEventListener('hashchange', updatePage); return () => window.removeEventListener('hashchange', updatePage) }, [])
+  useEffect(() => {
     if (!token) { setUser(null); return }
-    try { setUser(await request('/auth/me', { token })) }
-    catch { sessionStorage.removeItem('ccc-token'); setToken(''); setUser(null) }
-  }
+    request('/auth/me', { token }).then((currentUser) => { setUser(currentUser); const target = currentUser.role === 'ADMIN' ? 'admin' : currentUser.role === 'FACULTY' ? 'faculty' : 'availability'; if (window.location.hash.slice(1) !== target) navigate(target) }).catch(() => { sessionStorage.removeItem('ccc-token'); setToken(''); setUser(null) })
+  }, [token, navigate])
 
-  async function loadRoleData(role = user?.role) {
-    if (!token || !role) return
+  async function doLogin(credentials, expectedRole) {
     try {
-      if (role === 'FACULTY') setRequests(await request('/booking-requests/mine', { token }))
-      if (role === 'ADMIN') {
-        const [p, e, a] = await Promise.all([
-          request('/admin/booking-requests?status=PENDING', { token }),
-          request('/admin/email-logs', { token }), request('/admin/audit-logs', { token }),
-        ])
-        setPending(p); setEmailLogs(e); setAuditLogs(a)
-      }
-    } catch (e) { setError(e.message) }
+      const result = await request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) })
+      if (result.user.role !== expectedRole) return `This account has the ${result.user.role.toLowerCase()} role. Choose the matching login option.`
+      sessionStorage.setItem('ccc-token', result.access_token)
+      setToken(result.access_token); setUser(result.user); setDrawerRole(null); setNotice(`Signed in as ${result.user.display_name}`); setError('')
+      navigate(expectedRole === 'ADMIN' ? 'admin' : 'faculty')
+      return null
+    } catch (loginError) { return loginError.message }
   }
+  function logout() { sessionStorage.removeItem('ccc-token'); setToken(''); setUser(null); navigate('availability'); setNotice('Signed out') }
+  function shiftRange(direction) { const nextDate = new Date(`${startDate}T12:00:00+05:30`); nextDate.setDate(nextDate.getDate() + direction * rangeDays); setStartDate(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(nextDate)) }
+  const validPage = page === 'availability' || user?.role === 'ADMIN' && page === 'admin' || user?.role === 'FACULTY' && page === 'faculty'
 
-  useEffect(() => { loadAvailability() }, [startDate])
-  useEffect(() => { loadUser() }, [token])
-  useEffect(() => { if (user) loadRoleData(user.role) }, [user])
-
-  async function doLogin(event) {
-    event.preventDefault(); setError(''); setNotice('')
-    try {
-      const result = await request('/auth/login', { method: 'POST', body: JSON.stringify(login) })
-      sessionStorage.setItem('ccc-token', result.access_token); setToken(result.access_token); setUser(result.user)
-      setLogin({ username: '', password: '' }); setNotice(`Signed in as ${result.user.display_name}`)
-    } catch (e) { setError(e.message) }
-  }
-
-  function logout() { sessionStorage.removeItem('ccc-token'); setToken(''); setUser(null); setNotice('Signed out') }
-
-  async function submitBooking(event) {
-    event.preventDefault(); setError(''); setNotice('')
-    try {
-      await request('/booking-requests', { token, method: 'POST', body: JSON.stringify(form) })
-      setNotice('Request submitted for CCC administrator review.')
-      setForm({ ...blankForm, booking_date: todayString() }); loadRoleData('FACULTY')
-    } catch (e) { setError(e.message) }
-  }
-
-  async function decide(id, choice) {
-    setError(''); setNotice('')
-    try {
-      await request(`/admin/booking-requests/${id}/${choice}`, { token, method: 'POST' })
-      setNotice(`Request ${choice}d.`); loadRoleData('ADMIN'); loadAvailability()
-    } catch (e) { setError(e.message) }
-  }
-
-  async function cancelBooking(id) {
-    if (!window.confirm('Cancel this confirmed booking?')) return
-    try { await request(`/admin/bookings/${id}/cancel`, { token, method: 'POST' }); setNotice('Booking cancelled.'); loadAvailability() }
-    catch (e) { setError(e.message) }
-  }
-
-  const byRoomDate = new Map(schedule.map((entry) => [`${entry.room_code}-${entry.date}`, entry]))
-
-  return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-8">
-          <div><p className="text-xs font-semibold uppercase tracking-[.17em] text-teal-700">National Institute of Technology Calicut</p><h1 className="mt-1 text-xl font-semibold">CCC Terminal Booking Tracker</h1></div>
-          <div className="flex items-center gap-3">{user ? <><span className="text-sm text-slate-600">{user.display_name} · {user.role}</span><button className="button-secondary" onClick={logout}>Sign out</button></> : <span className="text-sm text-slate-500">Availability · IST</span>}</div>
-        </div>
-      </header>
-      <div className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">
-        {(error || notice) && <div role="status" className={`rounded-lg px-4 py-3 text-sm ${error ? 'bg-rose-50 text-rose-800' : 'bg-teal-50 text-teal-900'}`}>{error || notice}<button className="float-right font-semibold" onClick={() => { setError(''); setNotice('') }}>×</button></div>}
-
-        <section className="rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-5"><div><p className="text-sm font-medium text-teal-300">Central Computer Centre</p><h2 className="mt-2 text-3xl font-semibold tracking-tight">Terminal room availability</h2><p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">View confirmed bookings across all six rooms. All times are Indian Standard Time.</p></div>
-            <label className="text-sm text-slate-300">Week starting <input className="ml-2 rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-white" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
-          </div>
-        </section>
-
-        <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="min-w-[1000px]">
-            <div className="grid grid-cols-[100px_repeat(7,minmax(120px,1fr))] border-b bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500"><div className="p-3">Room</div>{days.map((day) => <div key={day} className="border-l p-3">{new Intl.DateTimeFormat('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(`${day}T12:00:00+05:30`))}</div>)}</div>
-            {roomCodes.map((room) => <div key={room} className="grid grid-cols-[100px_repeat(7,minmax(120px,1fr))] border-b last:border-0"><div className="p-3 font-semibold">{room}</div>{days.map((day) => { const data = byRoomDate.get(`${room}-${day}`); const busy = new Set((data?.slots || []).filter((s) => s.status === 'BOOKED').map((s) => s.start)); return <div key={day} className="border-l p-2"><div className="grid grid-cols-3 gap-1">{Array.from({ length: 12 }, (_, i) => { const time = `${String(i + 8).padStart(2, '0')}:00`; return <span title={`${time} IST · ${busy.has(time) ? 'Booked' : 'Available'}`} key={time} className={`rounded px-1 py-1 text-center text-[10px] font-medium ${busy.has(time) ? 'bg-rose-100 text-rose-800' : 'bg-teal-50 text-teal-800'}`}>{time.slice(0, 2)}</span> })}</div></div> })}</div>)}
-          </div>
-          <div className="flex gap-4 border-t px-4 py-3 text-xs text-slate-600"><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-teal-200" />Available</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-rose-200" />Confirmed booking</span></div>
-        </section>
-
-        {!user && <section className="grid gap-6 md:grid-cols-[1fr_360px]"><div className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">Need to submit a request?</h3><p className="mt-2 text-sm leading-6 text-slate-600">Faculty can sign in with their application account to request a room. Student accounts are view-only.</p></div><form onSubmit={doLogin} className="space-y-3 rounded-xl border border-slate-200 bg-white p-6"><h3 className="font-semibold">Application sign in</h3><input className="input" autoComplete="username" placeholder="Username" value={login.username} onChange={(e) => setLogin({ ...login, username: e.target.value })} required /><input className="input" type="password" autoComplete="current-password" placeholder="Password" value={login.password} onChange={(e) => setLogin({ ...login, password: e.target.value })} required /><button className="button-primary w-full">Sign in</button></form></section>}
-
-        {user?.role === 'FACULTY' && <section className="grid gap-6 lg:grid-cols-[360px_1fr]"><form onSubmit={submitBooking} className="space-y-3 rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">Request a terminal</h3><label className="field-label">Room<select className="input" value={form.room_code} onChange={(e) => setForm({ ...form, room_code: e.target.value })}>{roomCodes.map((r) => <option key={r}>{r}</option>)}</select></label><label className="field-label">Date<input className="input" type="date" min={todayString()} value={form.booking_date} onChange={(e) => setForm({ ...form, booking_date: e.target.value })} required /></label><div className="grid grid-cols-2 gap-3"><label className="field-label">Start (IST)<select className="input" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value, end_time: `${String(Number(e.target.value.slice(0, 2)) + 1).padStart(2, '0')}:00` })}>{Array.from({ length: 12 }, (_, i) => `${String(i + 8).padStart(2, '0')}:00`).map((t) => <option key={t}>{t}</option>)}</select></label><label className="field-label">End (IST)<select className="input" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })}>{Array.from({ length: 12 }, (_, i) => `${String(i + 9).padStart(2, '0')}:00`).map((t) => <option key={t}>{t}</option>)}</select></label></div><label className="field-label">Purpose<textarea className="input min-h-24" maxLength={500} value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} required /></label><button className="button-primary w-full">Send for approval</button></form><div className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">My booking requests</h3><div className="mt-4 divide-y">{requests.length ? requests.map((r) => <div key={r.id} className="flex flex-wrap justify-between gap-2 py-3 text-sm"><span><b>{r.room_code}</b> · {r.booking_date} · {r.start_time}–{r.end_time}<span className="block text-slate-500">{r.purpose}</span></span><span className="badge">{r.status}</span></div>) : <p className="py-5 text-sm text-slate-500">No requests yet.</p>}</div></div></section>}
-
-        {user?.role === 'ADMIN' && <section className="space-y-6"><div className="rounded-xl border border-slate-200 bg-white p-6"><div className="flex items-center justify-between"><h3 className="text-lg font-semibold">Pending faculty requests</h3><button className="button-secondary" onClick={() => loadRoleData('ADMIN')}>Refresh</button></div><div className="mt-4 divide-y">{pending.length ? pending.map((r) => <div key={r.id} className="flex flex-wrap items-center justify-between gap-4 py-4"><div className="text-sm"><b>{r.room_code}</b> · {r.booking_date} · {r.start_time}–{r.end_time}<p className="mt-1 text-slate-600">{r.purpose}</p><p className="text-xs text-slate-400">Faculty account: {r.faculty_user_id}</p></div><div className="flex gap-2"><button className="button-primary" onClick={() => decide(r.id, 'approve')}>Approve</button><button className="button-secondary" onClick={() => decide(r.id, 'reject')}>Reject</button></div></div>) : <p className="py-5 text-sm text-slate-500">No pending requests.</p>}</div></div>
-          <div className="grid gap-6 xl:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">Email processing</h3><div className="mt-4 space-y-3">{emailLogs.length ? emailLogs.map((e) => <article key={e.id} className="rounded-lg bg-slate-50 p-3 text-sm"><div className="flex justify-between gap-3"><b className="truncate">{e.subject || '(no subject)'}</b><span className="badge">{e.status}</span></div><p className="mt-1 truncate text-xs text-slate-500">{e.sender} {e.received_at ? `· ${new Date(e.received_at).toLocaleString()}` : ''}</p>{e.error && <p className="mt-2 text-xs text-rose-700">{e.error}</p>}</article>) : <p className="text-sm text-slate-500">No messages processed yet.</p>}</div></div><div className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">Recent audit events</h3><div className="mt-4 space-y-2">{auditLogs.slice(0, 30).map((a) => <div key={a.id} className="flex justify-between gap-3 border-b py-2 text-xs"><span>{a.action} · {a.entity_type}</span><time className="shrink-0 text-slate-500">{new Date(a.created_at).toLocaleString()}</time></div>)}{!auditLogs.length && <p className="text-sm text-slate-500">No events recorded.</p>}</div></div></div>
-          <div className="rounded-xl border border-slate-200 bg-white p-6"><h3 className="text-lg font-semibold">Confirmed bookings this week</h3><div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{schedule.flatMap((d) => (d.bookings || []).map((b) => ({ ...b, room: d.room_code, date: d.date }))).map((b) => <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-sm"><span><b>{b.room}</b> · {b.date}<small className="block text-slate-600">{b.start}–{b.end} IST</small></span><button className="text-xs font-semibold text-rose-700" onClick={() => cancelBooking(b.id)}>Cancel</button></div>)}</div></div>
-        </section>}
-      </div>
-      <footer className="border-t border-slate-200 px-5 py-5 text-center text-xs text-slate-500">NITC Central Computer Centre · Operating hours 08:00–20:00 IST</footer>
-    </main>
-  )
+  return <main className="min-h-screen bg-slate-50 text-slate-900"><header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur"><div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-8"><button className="text-left" onClick={() => navigate('availability')}><p className="text-xs font-semibold uppercase tracking-[.17em] text-teal-700">National Institute of Technology Calicut</p><h1 className="mt-1 text-xl font-semibold">CCC Terminal Booking Tracker</h1></button><nav className="flex items-center gap-2">{user ? <><button className="button-secondary" onClick={() => navigate('availability')}>Schedule</button>{user.role !== 'STUDENT' && <button className="button-secondary" onClick={() => navigate(user.role.toLowerCase())}>Dashboard</button>}<span className="ml-2 hidden text-sm text-slate-600 sm:inline">{user.display_name} · {user.role}</span><button className="button-secondary" onClick={logout}>Sign out</button></> : <div className="group relative"><button className="button-primary px-5 py-2.5" aria-haspopup="true">Login <span aria-hidden="true">⌄</span></button><div className="invisible absolute right-0 top-full z-40 mt-2 w-52 translate-y-1 rounded-xl border border-slate-200 bg-white p-2 opacity-0 shadow-xl transition group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100"><button className="w-full rounded-lg px-3 py-2.5 text-left text-sm hover:bg-teal-50" onClick={() => setDrawerRole('FACULTY')}>Faculty login</button><button className="w-full rounded-lg px-3 py-2.5 text-left text-sm hover:bg-teal-50" onClick={() => setDrawerRole('ADMIN')}>Admin login</button></div></div>}</nav></div></header>
+    <div className="mx-auto max-w-7xl space-y-7 px-5 py-8 lg:px-8">{(error || notice) && <div role={error ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm ${error ? 'bg-rose-50 text-rose-800' : 'bg-teal-50 text-teal-900'}`}>{error || notice}<button className="float-right font-semibold" onClick={() => { setError(''); setNotice('') }}>×</button></div>}
+      {validPage && page === 'availability' && <AvailabilityPage schedule={schedule} days={days} startDate={startDate} setStartDate={setStartDate} rangeDays={rangeDays} setRangeDays={setRangeDays} shiftRange={shiftRange} goToday={() => setStartDate(todayIST())} loading={availabilityLoading} availabilityState={availabilityState} />}
+      {user?.role === 'STUDENT' && <StudentPage />}
+      {user?.role === 'FACULTY' && page === 'faculty' && <FacultyDashboard token={token} onError={onError} onNotice={onNotice} refreshAvailability={refreshAvailability} />}
+      {user?.role === 'ADMIN' && page === 'admin' && <AdminDashboard token={token} schedule={schedule} onError={onError} onNotice={onNotice} refreshAdmin={adminVersion} refreshAvailability={refreshAvailability} />}
+      {!validPage && user && <div className="rounded-xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-semibold">Dashboard page unavailable</h2><button className="button-primary mt-4" onClick={() => navigate(user.role === 'ADMIN' ? 'admin' : user.role === 'FACULTY' ? 'faculty' : 'availability')}>Open my dashboard</button></div>}
+      {!user && <p className="text-sm text-slate-500">Students can view the schedule without signing in. Faculty and administrators can sign in from the header.</p>}
+    </div><footer className="border-t border-slate-200 px-5 py-5 text-center text-xs text-slate-500">NITC Central Computer Centre · Operating hours 08:00–20:00 IST · bookings in 30-minute increments</footer>
+    {drawerRole && <LoginDrawer key={drawerRole} role={drawerRole} onClose={() => setDrawerRole(null)} onLogin={doLogin} />}
+  </main>
 }

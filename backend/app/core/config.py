@@ -15,15 +15,17 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     host: str = "127.0.0.1"
     port: int = 8000
-    mongodb_uri: str = ""
-    mongodb_database: str = "nitc_ccc_tracker"
+    database_url: str = ""
     jwt_secret_key: str = Field(default="development-only-change-me", min_length=24)
     access_token_minutes: int = 30
     bootstrap_admin_username: str = "admin"
     bootstrap_admin_password: str = ""
+    bootstrap_faculty_username: str = ""
+    bootstrap_faculty_display_name: str = "CCC Faculty"
+    bootstrap_faculty_password: str = ""
     frontend_origin: str = "http://localhost:5173"
     campus_timezone: str = "Asia/Kolkata"
-    booking_slot_minutes: int = 60
+    booking_slot_minutes: int = 30
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_ENV,

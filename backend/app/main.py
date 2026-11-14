@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
-from app.db.mongo import close_mongo, connect_mongo
+from app.db.postgres import dispose_database, initialize_database
 from app.api.routes import auth, bookings, rooms
 
 settings = get_settings()
@@ -13,10 +13,10 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    if settings.mongodb_uri:
-        connect_mongo(settings.mongodb_uri, settings.mongodb_database)
+    if settings.database_url:
+        initialize_database()
     yield
-    close_mongo()
+    dispose_database()
 
 app = FastAPI(
     title=settings.app_name,
@@ -27,7 +27,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=[origin.strip() for origin in settings.frontend_origin.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],

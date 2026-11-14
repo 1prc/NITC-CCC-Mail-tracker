@@ -3,7 +3,7 @@
 ## Project direction
 - Build the NITC CCC Terminal Booking Tracker as a maintainable academic project.
 - Follow `docs/architecture.md` and `docs/roadmap.md` as the current planning baseline.
-- Keep the agreed stack: React + Vite + Tailwind CSS + JavaScript; Python + FastAPI; MongoDB Atlas with PyMongo; Gmail IMAP OAuth 2.0 XOAUTH2 using Python standard-library IMAP/email modules.
+- Keep the selected stack: React + Vite + Tailwind CSS + JavaScript; Python + FastAPI; PostgreSQL on Neon with SQLAlchemy/psycopg; Gmail IMAP OAuth 2.0 XOAUTH2 using Python standard-library IMAP/email modules.
 - Do not substitute major technologies or introduce unnecessary dependencies without explaining the reason and obtaining the user's approval.
 
 ## Workflow
@@ -18,7 +18,7 @@
 - Run relevant checks when requested or required by the active milestone, and report their results accurately.
 
 ## Domain invariants
-- Rooms initially are T1–T6; operating hours are 08:00–20:00 in the configured campus timezone.
+- Rooms initially are T1–T6; operating hours are 08:00–20:00 in the configured campus timezone; booking boundaries are every 30 minutes.
 - Confirmed bookings alone consume availability. Pending faculty requests do not.
 - Booking intervals are half-open `[start, end)`: adjacent bookings are valid.
 - Reject invalid/out-of-hours intervals and prevent overlapping confirmed bookings, including concurrent creation attempts.
@@ -26,4 +26,4 @@
 - Preserve original emails: use read-only IMAP selection and `BODY.PEEK`; do not delete or mark messages read.
 
 ## Current stage
-- Milestone 2 (project setup) is authorized and in progress. After setup, proceed only with the next milestone the user requests.
+- Milestones 1–6 have implementation in the repository. Continue integration and live verification when the configured Neon connection is reachable and the authorized mailbox is supplied. Do not perform schema/bootstrap writes without the user's request.

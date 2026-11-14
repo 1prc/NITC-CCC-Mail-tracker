@@ -1,51 +1,46 @@
-"""Create initial rooms and optionally one administrator from environment settings."""
+"""Create the SQL schema, seed T1–T6, and provision optional first accounts."""
 
-from datetime import datetime, timezone
-
-from pymongo import ASCENDING, MongoClient
+from sqlalchemy import select
 
 from app.core.config import get_settings
+from app.db.models import Room, User
+from app.db.postgres import create_schema, dispose_database, initialize_database, session_scope
 from app.services.auth import hash_password
 
 
 def main() -> None:
     settings = get_settings()
-    if not settings.mongodb_uri:
-        raise SystemExit("Set MONGODB_URI in backend/.env before bootstrapping.")
-    client = MongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
+    if not settings.database_url:
+        raise SystemExit("Set DATABASE_URL in backend/.env before bootstrapping.")
+    initialize_database()
     try:
-        client.admin.command("ping")
-        db = client[settings.mongodb_database]
-        db.users.create_index([("username", ASCENDING)], unique=True)
-        db.rooms.create_index([("code", ASCENDING)], unique=True)
-        now = datetime.now(timezone.utc)
-        for code in ("T1", "T2", "T3", "T4", "T5", "T6"):
-            db.rooms.update_one(
-                {"code": code},
-                {"$setOnInsert": {"code": code, "active": True, "created_at": now}},
-                upsert=True,
-            )
-        username = settings.bootstrap_admin_username.strip().lower()
-        password = settings.bootstrap_admin_password
-        if password:
-            db.users.update_one(
-                {"username": username},
-                {"$setOnInsert": {
-                    "username": username,
-                    "password_hash": hash_password(password),
-                    "role": "ADMIN",
-                    "display_name": "CCC Administrator",
-                    "active": True,
-                    "created_at": now,
-                }},
-                upsert=True,
-            )
-            print("Initial administrator ensured.")
-        else:
-            print("No bootstrap administrator created; set BOOTSTRAP_ADMIN_PASSWORD to create one.")
-        print("Rooms T1–T6 ensured.")
+        create_schema()
+        with session_scope() as db:
+            for code in ("T1", "T2", "T3", "T4", "T5", "T6"):
+                if db.scalar(select(Room).where(Room.code == code)) is None:
+                    db.add(Room(code=code, active=True))
+            username = settings.bootstrap_admin_username.strip().lower()
+            password = settings.bootstrap_admin_password
+            accounts = [
+                (username, "CCC Administrator", password, "ADMIN"),
+                (settings.bootstrap_faculty_username.strip().lower(),
+                 settings.bootstrap_faculty_display_name.strip(), settings.bootstrap_faculty_password, "FACULTY"),
+            ]
+            for account_username, display_name, account_password, role in accounts:
+                if not account_username or not account_password:
+                    continue
+                if len(account_password) < 12:
+                    raise SystemExit(f"Bootstrap password for {role} must be at least 12 characters.")
+                if db.scalar(select(User).where(User.username == account_username)) is None:
+                    db.add(User(username=account_username, display_name=display_name,
+                                password_hash=hash_password(account_password), role=role, active=True))
+                    print(f"Initial {role.lower()} account created.")
+            if not password:
+                print("No administrator created; set BOOTSTRAP_ADMIN_PASSWORD to create one.")
+            db.commit()
+            print("PostgreSQL schema ready; rooms T1–T6 ensured.")
     finally:
-        client.close()
+        dispose_database()
 
 
 if __name__ == "__main__":
