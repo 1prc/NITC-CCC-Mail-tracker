@@ -1,5 +1,6 @@
 """Independent read-only IMAP polling worker using Gmail XOAUTH2."""
 
+import argparse
 import imaplib
 import logging
 import os
@@ -95,7 +96,7 @@ def poll_once(connection, mailbox: str, initial_uid: int, allowed_senders: set[s
         return last_uid, uid_validity
 
 
-def run():
+def run(once: bool = False):
     settings = get_settings()
     mailbox = os.getenv("GMAIL_MAILBOX", "").strip()
     client_secret = os.getenv("GMAIL_CLIENT_SECRET_FILE", "").strip()
@@ -112,14 +113,26 @@ def run():
             try:
                 creds = get_credentials(client_secret, token_file)
                 client = connect_mailbox(mailbox, creds.token)
-                poll_once(client, mailbox, int(os.getenv("GMAIL_INITIAL_UID", "0")), allowed)
-                client.logout()
+                try:
+                    poll_once(client, mailbox, int(os.getenv("GMAIL_INITIAL_UID", "0")), allowed)
+                finally:
+                    client.logout()
             except Exception:
                 logging.exception("Mailbox poll failed; retrying")
+                if once:
+                    raise
+            if once:
+                break
             time.sleep(poll_seconds)
     finally:
         dispose_database()
 
 
+def main():
+    parser = argparse.ArgumentParser(description="Poll the CCC Gmail mailbox")
+    parser.add_argument("--once", action="store_true", help="Run one poll and exit")
+    run(once=parser.parse_args().once)
+
+
 if __name__ == "__main__":
-    run()
+    main()
