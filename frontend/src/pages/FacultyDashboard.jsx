@@ -61,8 +61,8 @@ export default function FacultyDashboard({ token, onError, onNotice, refreshAvai
     } catch (error) { onError(error.message) }
   }
 
-  const startTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(480 + index * 30))
-  const endTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(510 + index * 30))
+  const startTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30))
+  const endTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(30 + index * 30))
     .filter((time) => timeToMinutes(time) > timeToMinutes(form.start_time))
 
   return <div className="space-y-6">
@@ -82,6 +82,7 @@ export default function FacultyDashboard({ token, onError, onNotice, refreshAvai
 }
 
 function toAmPm(value) {
+  if (value === '24:00') return '12:00 AM (+1 day)'
   const [hour, minute] = value.split(':').map(Number)
   return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }

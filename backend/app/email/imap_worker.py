@@ -18,7 +18,7 @@ from app.db.models import MailboxState
 from app.db.postgres import dispose_database, initialize_database, session_scope
 
 load_dotenv(BACKEND_ENV)
-from app.email.processor import process_message
+from app.email.processor import process_message, reprocess_legacy_hours_rejections
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 SCOPES = ["https://mail.google.com/"]
@@ -70,6 +70,9 @@ def poll_once(connection, mailbox: str, initial_uid: int, allowed_senders: set[s
             db.commit()
             logging.info("UIDVALIDITY changed; reset safe baseline to UID %s without backfill", state.last_uid)
             return state.last_uid, uid_validity
+        recovered = reprocess_legacy_hours_rejections(db, mailbox, allowed_senders)
+        if recovered:
+            logging.info("Recovered %s booking(s) previously rejected by the old hours limit", recovered)
         typ, data = connection.uid("search", None, f"UID {last_uid + 1}:*")
         if typ != "OK" or not data or not data[0]:
             return last_uid, uid_validity

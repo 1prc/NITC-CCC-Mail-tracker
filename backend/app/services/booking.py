@@ -344,7 +344,7 @@ def list_availability(db: Session, start_date: date, days: int = 14):
                            "status": "BOOKED" if minute in occupied else
                                     "MAINTENANCE" if minute in maintained else
                                     "PENDING" if minute in pending_slots else "AVAILABLE"}
-                          for minute in range(8 * 60, 20 * 60, 30)],
+                          for minute in range(0, 24 * 60, 30)],
                 "bookings": [{"id": str(row.id), "start": row.start_time, "end": row.end_time} for row in entries],
                 "maintenance": [{"id": str(row.id), "start": row.start_time, "end": row.end_time}
                                 for row in maintenance],

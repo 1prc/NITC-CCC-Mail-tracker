@@ -10,8 +10,67 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import EmailLog
+from app.domain.booking import BookingInput
 from app.email.parser import _time_to_minutes, extract_booking_fields, extract_text, validate_booking_fields
 from app.services.booking import _claim_booking, _audit
+
+LEGACY_HOURS_REJECTION = "Booking is outside operating hours (08:00–20:00 IST)"
+
+
+def reprocess_legacy_hours_rejections(db: Session, mailbox_key: str, allowed_senders: set[str]) -> int:
+    """Recover CCC messages rejected solely by the previous 08:00–20:00 limit."""
+    ids = db.scalars(select(EmailLog.id).where(
+        EmailLog.mailbox_key == mailbox_key,
+        EmailLog.status == "INVALID",
+        EmailLog.error_detail == LEGACY_HOURS_REJECTION,
+    )).all()
+    recovered = 0
+    for log_id in ids:
+        log = db.get(EmailLog, log_id)
+        sender_addr = (log.sender.rsplit("<", 1)[-1].rstrip("> ").lower() if log else "")
+        if log is None or sender_addr not in allowed_senders:
+            continue
+        try:
+            booking_input = BookingInput(
+                room_code=log.parsed_room,
+                booking_date=log.parsed_date,
+                start_time=log.parsed_start,
+                end_time=log.parsed_end,
+                purpose=log.parsed_purpose or "CCC room reservation",
+            )
+            booking = _claim_booking(db, booking_input, "gmail-worker", "EMAIL", str(log.id))
+            log.status = "PROCESSED"
+            log.booking_id = booking.id
+            log.processed_at = datetime.now(timezone.utc)
+            log.error_code = None
+            log.error_detail = None
+            log.attempt_count += 1
+            _audit(db, None, "EMAIL_BOOKING_IMPORTED", "booking", booking.id,
+                   {"email_log_id": log.id, "recovered_from_legacy_hours_limit": True})
+            db.commit()
+            recovered += 1
+        except IntegrityError:
+            db.rollback()
+            log = db.get(EmailLog, log_id)
+            log.status = "CONFLICT"
+            log.error_code = "BOOKING_CONFLICT"
+            log.error_detail = "One or more requested half-hour slots have already been allocated"
+            db.commit()
+        except HTTPException as error:
+            db.rollback()
+            log = db.get(EmailLog, log_id)
+            log.status = "CONFLICT" if error.status_code == 409 else "INVALID"
+            log.error_code = "BOOKING_CONFLICT" if error.status_code == 409 else "INVALID_BOOKING_DATA"
+            log.error_detail = str(error.detail)[:500]
+            db.commit()
+        except ValueError as error:
+            db.rollback()
+            log = db.get(EmailLog, log_id)
+            log.status = "INVALID"
+            log.error_code = "INVALID_BOOKING_DATA"
+            log.error_detail = str(error)[:500]
+            db.commit()
+    return recovered
 
 
 def process_message(db: Session, mailbox_key: str, uid_validity: str, uid: int, raw_message: bytes,

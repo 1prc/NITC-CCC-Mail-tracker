@@ -18,10 +18,10 @@
 - Run relevant checks when requested or required by the active milestone, and report their results accurately.
 
 ## Domain invariants
-- Rooms initially are T1–T6; operating hours are 08:00–20:00 in the configured campus timezone; booking boundaries are every 30 minutes.
+- Rooms initially are T1–T6; availability spans the full 00:00–24:00 day in the configured campus timezone; booking boundaries are every 30 minutes.
 - Confirmed bookings alone consume availability. Pending faculty requests do not.
 - Booking intervals are half-open `[start, end)`: adjacent bookings are valid.
-- Reject invalid/out-of-hours intervals and prevent overlapping confirmed bookings, including concurrent creation attempts.
+- Reject invalid/out-of-day intervals and prevent overlapping confirmed bookings, including concurrent creation attempts.
 - Imported invalid or conflicting messages must be retained in email processing logs for administrator review; never silently discard them.
 - Preserve original emails: use read-only IMAP selection and `BODY.PEEK`; do not delete or mark messages read.
 

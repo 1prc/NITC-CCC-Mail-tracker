@@ -4,7 +4,7 @@
 
 CCC currently communicates room bookings through email. The system provides a date-range availability timeline for six rooms (T1–T6), faculty booking requests, administrator review and management, and a separately running worker that imports valid booking emails. Imported valid bookings and administrator-approved faculty requests become confirmed bookings. Students can view availability but cannot mutate data.
 
-Operating hours are 08:00–20:00 IST (`Asia/Kolkata`). Bookings can start and end on 30-minute boundaries, span one or more half-hour slots, and are represented as half-open intervals `[start, end)`, so adjacent reservations are permitted. Pending requests do not consume availability.
+Availability covers the full day from 00:00 to 24:00 IST (`Asia/Kolkata`). Bookings can start and end on 30-minute boundaries, span one or more half-hour slots, and are represented as half-open intervals `[start, end)`, so adjacent reservations are permitted. Pending requests do not consume availability.
 
 All dates and times are interpreted in the configured campus timezone `Asia/Kolkata` (IST). Persist booking date and slot boundaries as local date plus minute-of-day/slot identifiers for this fixed-hours domain; use UTC timestamps for audit and processing events.
 
@@ -164,7 +164,7 @@ Use `401` for missing/invalid authentication, `403` for insufficient role, `404`
 5. Create or locate an `email_logs` record by Message-ID and UID identity. Persist `RECEIVED`, then transition to `PROCESSING` with retry-safe state updates.
 6. Extract MIME text and required headers; decode safely. Identify booking messages using configured deterministic rules. Non-booking mail is not a booking failure; record the chosen handling policy (ignore with cursor advance, or log as non-booking—decision needed).
 7. Parse room, date, start/end, purpose. Keep extraction, parsing, and validation separate. Normalize date/time into campus timezone and minute/slot values.
-8. Validate room, date, operating hours, interval order, required purpose, sender policy, and supported slot granularity. Invalid input becomes `INVALID` with a clear safe reason.
+8. Validate room, date, full-day interval bounds, required purpose, sender policy, and supported slot granularity. Invalid input becomes `INVALID` with a clear safe reason.
 9. Ask BookingService to claim slots and create a confirmed booking idempotently. A collision becomes `CONFLICT`; database/network/temporary errors become `FAILED` and are retryable.
 10. Mark success `PROCESSED`, link booking, write audit record, and advance durable UID cursor only after the message has been durably classified/recorded. Reconnect with bounded backoff; poll every 30 seconds by default.
 11. Admin endpoints expose failures/conflicts for review. Provide an explicit controlled baseline/backfill command; never silently import the entire history at first launch.
@@ -185,7 +185,7 @@ Ensure state transitions tolerate worker restart and duplicate delivery. A per-m
 
 ## 9. Booking conflict-prevention strategy
 
-Represent allowed predefined slots as atomic, non-overlapping units over 08:00–20:00. A requested interval must align to slot boundaries and claim every covered slot. For interval `[start, end)`, allocate slots whose ranges intersect it; with aligned boundaries this is the set from start inclusive to end exclusive. Adjacent bookings share no slot and therefore remain valid.
+Represent allowed predefined slots as atomic, non-overlapping units over 00:00–24:00. A requested interval must align to slot boundaries and claim every covered slot. For interval `[start, end)`, allocate slots whose ranges intersect it; with aligned boundaries this is the set from start inclusive to end exclusive. Adjacent bookings share no slot and therefore remain valid.
 
 Within a PostgreSQL transaction: lock the request row and verify it is pending, insert booking and unique slot allocations, update request/email log, and add an audit event. A unique-constraint failure means another booking claimed a slot; roll back and return a conflict. Cancellation changes booking state and releases allocations atomically. Imported bookings follow the same service path. Pending faculty requests do not allocate slots.
 
@@ -207,7 +207,7 @@ Booking boundaries use 30-minute increments. The PostgreSQL slot uniqueness cons
 
 ## 11. Ambiguities and decisions needed
 
-1. **Slot length and duration rules:** Updated: start/end times align to 30-minute boundaries; a reservation may cover consecutive slots. The 08:00–20:00 range yields twenty-four slots per room per day.
+1. **Slot length and duration rules:** Updated: start/end times align to 30-minute boundaries; a reservation may cover consecutive slots. The full-day range yields forty-eight slots per room per day.
 2. **Campus timezone:** Resolved: `Asia/Kolkata` (IST).
 3. **Booking request lead time:** Are same-day or past-date requests allowed? How far ahead can bookings be made?
 4. **Email format and trust policy:** What subject/body examples define an official booking? Which sender addresses/domains are trusted? Must messages originate from CCC only, and how are forwarded messages handled?

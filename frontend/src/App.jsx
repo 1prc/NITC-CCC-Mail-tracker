@@ -17,8 +17,8 @@ function AvailabilityPage({ schedule, days, startDate, setStartDate, rangeDays, 
       const dayEntries = roomCodes.map((room) => ({ room, ...(byRoomDate.get(`${room}-${day}`) || { bookings: [], maintenance: [] }) }))
       const bookingCount = dayEntries.reduce((count, entry) => count + entry.bookings.length, 0)
       const maintenanceCount = dayEntries.reduce((count, entry) => count + (entry.maintenance || []).length, 0)
-      return <section key={day} className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><div className="min-w-[900px]"><div className="flex items-center justify-between border-b bg-slate-50 px-5 py-3"><div><h3 className="font-semibold">{dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3><p className="text-xs text-slate-500">{availabilityState === 'ready' ? `${bookingCount} booked · ${maintenanceCount} under maintenance` : availabilityState === 'loading' ? 'Loading schedule…' : 'Availability unknown'}</p></div><span className="text-xs text-slate-500">IST · 8 AM–8 PM</span></div>
-        <div className="grid grid-cols-[60px_minmax(0,1fr)] items-end gap-4 px-4 pt-4"><span aria-hidden="true" /><div className="relative mb-2 h-5 text-[10px] text-slate-600">{Array.from({ length: 13 }, (_, index) => { const hour = 8 + index; const label = `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`; return <span key={hour} className={`absolute whitespace-nowrap ${index === 0 ? '' : index === 12 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${(index / 12) * 100}%` }}>{label}</span> })}</div></div>
+      return <section key={day} className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><div className="min-w-[900px]"><div className="flex items-center justify-between border-b bg-slate-50 px-5 py-3"><div><h3 className="font-semibold">{dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}</h3><p className="text-xs text-slate-500">{availabilityState === 'ready' ? `${bookingCount} booked · ${maintenanceCount} under maintenance` : availabilityState === 'loading' ? 'Loading schedule…' : 'Availability unknown'}</p></div><span className="text-xs text-slate-500">IST · 24-hour schedule</span></div>
+        <div className="grid grid-cols-[60px_minmax(0,1fr)] items-end gap-4 px-4 pt-4"><span aria-hidden="true" /><div className="relative mb-2 h-5 text-[10px] text-slate-600">{Array.from({ length: 13 }, (_, index) => { const hour = index * 2; const label = hour === 24 ? '12 AM' : `${hour % 12 || 12} ${hour < 12 ? 'AM' : 'PM'}`; return <span key={hour} className={`absolute whitespace-nowrap ${index === 0 ? '' : index === 12 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${(index / 12) * 100}%` }}>{label}</span> })}</div></div>
         <div className="divide-y">{dayEntries.map(({ room, bookings, maintenance = [] }) => <div key={room} className="grid grid-cols-[60px_minmax(0,1fr)] items-center gap-4 px-4 py-2"><span className="text-sm font-semibold">{room}</span><div>
           <div className={`relative h-11 rounded-md ${availabilityState === 'ready' ? 'bg-teal-50' : 'bg-slate-100'}`} style={{ backgroundImage: 'repeating-linear-gradient(to right, transparent 0, transparent calc(8.333333% - 1px), #cbd5e1 calc(8.333333% - 1px), #cbd5e1 8.333333%)' }} aria-label={`${room} timeline for ${day}`}>
             {availabilityState === 'ready' && bookings.map((booking) => <TimelineBar key={`booked-${booking.id}`} item={booking} tone="rose" label="Confirmed booking" />)}
@@ -34,13 +34,14 @@ function AvailabilityPage({ schedule, days, startDate, setStartDate, rangeDays, 
 function TimelineBar({ item, tone, label }) {
   const start = timeToMinutes(item.start)
   const end = timeToMinutes(item.end)
-  const left = ((start - 480) / 720) * 100
-  const width = ((end - start) / 720) * 100
+  const left = (start / 1440) * 100
+  const width = ((end - start) / 1440) * 100
   const colors = tone === 'amber' ? 'bg-amber-400 text-amber-950 ring-amber-500' : 'bg-rose-400 text-rose-950 ring-rose-500'
   return <div title={`${toAmPm(item.start)}–${toAmPm(item.end)} IST · ${label}`} className={`absolute top-1 flex h-9 items-center justify-center overflow-visible rounded px-1 text-[10px] font-semibold ring-1 ${colors}`} style={{ left: `${left}%`, width: `${width}%`, minWidth: '2px' }}><span className="pointer-events-none whitespace-nowrap rounded bg-white/85 px-1">{toAmPm(item.start)}–{toAmPm(item.end)}</span></div>
 }
 
 function toAmPm(value) {
+  if (value === '24:00') return '12:00 AM (+1 day)'
   const [hour, minute] = value.split(':').map(Number)
   return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }
@@ -121,7 +122,7 @@ export default function App() {
       {user?.role === 'ADMIN' && page === 'admin' && <AdminDashboard token={token} schedule={schedule} onError={onError} onNotice={onNotice} refreshAdmin={adminVersion} refreshAvailability={refreshAvailability} />}
       {!validPage && user && <div className="rounded-xl border border-slate-200 bg-white p-6"><h2 className="text-lg font-semibold">Dashboard page unavailable</h2><button className="button-primary mt-4" onClick={() => navigate(user.role === 'ADMIN' ? 'admin' : user.role === 'FACULTY' ? 'faculty' : 'availability')}>Open my dashboard</button></div>}
       {!user && <p className="text-sm text-slate-500">Students can view the schedule without signing in. Faculty and administrators can sign in from the header.</p>}
-    </div><footer className="border-t border-slate-200 px-5 py-5 text-center text-xs text-slate-500">NITC Central Computer Centre · Operating hours 08:00–20:00 IST · bookings in 30-minute increments</footer>
+    </div><footer className="border-t border-slate-200 px-5 py-5 text-center text-xs text-slate-500">NITC Central Computer Centre · Full-day IST schedule · bookings in 30-minute increments</footer>
     {drawerRole && <LoginDrawer key={drawerRole} role={drawerRole} onClose={() => setDrawerRole(null)} onLogin={doLogin} />}
   </main>
 }

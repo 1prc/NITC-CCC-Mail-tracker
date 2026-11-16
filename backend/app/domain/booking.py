@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class BookingInput(BaseModel):
     room_code: str = Field(pattern=r"^T[1-6]$")
     booking_date: date
-    start_time: str = Field(pattern=r"^(0[8-9]|1[0-9]):(00|30)$")
-    end_time: str = Field(pattern=r"^((0[8-9]|1[0-9]):(00|30)|20:00)$")
+    start_time: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):(?:00|30)$")
+    end_time: str = Field(pattern=r"^(?:(?:[01][0-9]|2[0-3]):(?:00|30)|24:00)$")
     purpose: str = Field(min_length=3, max_length=500)
 
     @field_validator("purpose")
@@ -46,8 +46,8 @@ class BookingInput(BaseModel):
 class MaintenanceInput(BaseModel):
     room_code: str = Field(pattern=r"^T[1-6]$")
     maintenance_date: date
-    start_time: str = Field(pattern=r"^(0[8-9]|1[0-9]):(00|30)$")
-    end_time: str = Field(pattern=r"^((0[8-9]|1[0-9]):(00|30)|20:00)$")
+    start_time: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):(?:00|30)$")
+    end_time: str = Field(pattern=r"^(?:(?:[01][0-9]|2[0-3]):(?:00|30)|24:00)$")
     note: str = Field(default="Room maintenance", min_length=3, max_length=500)
 
     @field_validator("note")

@@ -195,8 +195,8 @@ def validate_booking_fields(fields: BookingEmailFields) -> BookingInput:
     booking_date = parse_date(fields.date_text)
     start_minute = _time_to_minutes(fields.start_text)
     end_minute = _time_to_minutes(fields.end_text)
-    if start_minute < 8 * 60 or end_minute > 20 * 60:
-        raise ValueError("Booking is outside operating hours (08:00–20:00 IST)")
+    if start_minute < 0 or end_minute > 24 * 60:
+        raise ValueError("Booking times must be within 00:00–24:00 IST")
     if start_minute % 30 or end_minute % 30:
         raise ValueError("Booking times must align to 30-minute boundaries")
     if end_minute <= start_minute:

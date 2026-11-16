@@ -47,7 +47,7 @@ Public signup is not implemented. After the schema is initialized and an adminis
 
 The OAuth client file is not stored in this repository. Set `GMAIL_CLIENT_SECRET_FILE` to its protected absolute path in `backend/.env`, set `GMAIL_MAILBOX` to the exact authorized mailbox, and set `GMAIL_ALLOWED_SENDERS` to a comma-separated allowlist of official sender addresses. Leave the allowlist empty only in a controlled test mailbox. The requested `https://mail.google.com/` OAuth scope grants broad mailbox access; protect the client/token files and revoke access when no longer needed.
 
-Run the worker from the backend directory with `py worker.py`. The first run establishes a current UID high-water baseline and does not import mailbox history. Subsequent polling occurs every 30 seconds using read-only selection and `BODY.PEEK`. The first authorization opens the Google consent flow. The generated token file must remain outside source control.
+Run the worker from the backend directory with `py worker.py`; use `py worker.py --once` for one polling cycle. The first run establishes a current UID high-water baseline and does not import mailbox history. Continuous local polling uses read-only selection and `BODY.PEEK` every 30 seconds. The first authorization opens the Google consent flow. The generated token file must remain outside source control.
 
 Supported plain-text booking format (labels are case-insensitive):
 
@@ -59,7 +59,7 @@ End: 11:00
 Purpose: Example lab session
 ```
 
-The date accepts ISO, numeric day/month/year, and common month-name formats. Start/end values may use 24-hour or AM/PM notation and must align to 30-minute IST boundaries in the 08:00–20:00 window. The CCC bulletin format is also supported:
+The date accepts ISO, numeric day/month/year, and common month-name formats. Start/end values may use 24-hour or AM/PM notation and must align to 30-minute IST boundaries within the full 00:00–24:00 day. The CCC bulletin format is also supported:
 
 ```text
 Terminal Room T2 at the Central Computer Center has been reserved for Online assessment as per the following schedule:

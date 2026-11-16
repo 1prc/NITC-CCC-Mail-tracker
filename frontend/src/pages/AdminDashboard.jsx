@@ -15,7 +15,7 @@ function Panel({ title, children, action }) {
 
 function ampm(value) {
   const [hour, minute] = value.split(':').map(Number)
-  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
+  return value === '24:00' ? '12:00 AM (+1 day)' : `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`
 }
 
 function CreateUser({ token, onError, onNotice }) {
@@ -45,8 +45,8 @@ function MaintenanceManager({ token, onError, onNotice, refreshAvailability }) {
     catch (error) { onError(error.message) }
   }, [token, onError])
   useEffect(() => { load() }, [load])
-  const startTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(480 + index * 30))
-  const endTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(510 + index * 30)).filter((value) => timeToMinutes(value) > timeToMinutes(form.start_time))
+  const startTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30))
+  const endTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(30 + index * 30)).filter((value) => timeToMinutes(value) > timeToMinutes(form.start_time))
   async function submit(event) {
     event.preventDefault()
     try {
@@ -98,8 +98,8 @@ function BookingManager({ token, onError, onNotice, refreshAvailability }) {
   const monthStart = new Date(`${month}T12:00:00`)
   const monthDays = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate()
   const leading = (monthStart.getDay() + 6) % 7
-  const startTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(480 + index * 30))
-  const endTimes = Array.from({ length: 24 }, (_, index) => minutesToTime(510 + index * 30))
+  const startTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(index * 30))
+  const endTimes = Array.from({ length: 48 }, (_, index) => minutesToTime(30 + index * 30))
   function openEditor(booking) { setForm({ ...booking, start_time: booking.start, end_time: booking.end, purpose: booking.purpose || 'Booking' }) }
   async function saveEdit(event) {
     event.preventDefault()

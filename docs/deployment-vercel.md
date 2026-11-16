@@ -25,6 +25,6 @@ If the frontend's production domain changes, update `FRONTEND_ORIGIN` on the API
 
 ## Gmail worker
 
-The mailbox poller is a separate long-running process (`backend/worker.py`) and is not started by the request-driven FastAPI Vercel deployment. Keep it running on a worker host or development machine with `GMAIL_MAILBOX`, `GMAIL_CLIENT_SECRET_FILE`, `GMAIL_TOKEN_FILE`, `GMAIL_ALLOWED_SENDERS`, and `DATABASE_URL` configured. Do not upload OAuth client secrets or token files to Git.
+The request-driven FastAPI Vercel deployment does not run the mailbox poller. The repository's `.github/workflows/mailbox-poller.yml` runs `backend/worker.py --once` every five minutes and can also be started manually from GitHub Actions. Configure these encrypted repository Actions secrets: `DATABASE_URL`, `GMAIL_MAILBOX`, `GMAIL_ALLOWED_SENDERS`, `GMAIL_CLIENT_SECRET_JSON`, and `GMAIL_TOKEN_JSON`. OAuth files are written only to the temporary runner workspace. Do not commit OAuth client secrets or token files. The first worker run establishes a current UID baseline without importing mailbox history; later runs process new mail read-only with `BODY.PEEK`.
 
-Never commit production environment values. Configure them in Vercel's Environment Variables settings.
+Never commit production environment values. Configure API settings in Vercel's Environment Variables and mailbox worker credentials in GitHub Actions Secrets.
