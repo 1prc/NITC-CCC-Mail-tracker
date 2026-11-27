@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { minutesToTime, request, roomCodes, timeToMinutes, todayIST } from '../api'
 
+// All Action which done in project.
+
 const ACTIONS = [
   ['conflicts', 'Booking conflicts', 'Review CCC emails that overlap an existing booking.'],
   ['bookings', 'Bookings', 'Select a date to review, edit or remove confirmed bookings.'],
@@ -37,6 +39,7 @@ function CreateUser({ token, onError, onNotice }) {
     <div className="sm:col-span-2"><button className="button-primary">Create account</button></div>
   </form></Panel>
 }
+// Mainteance 
 
 function MaintenanceManager({ token, onError, onNotice, refreshAvailability }) {
   const [entries, setEntries] = useState([])
@@ -131,7 +134,7 @@ function BookingManager({ token, onError, onNotice, refreshAvailability }) {
     </div>
   </div></Panel>
 }
-
+// Admin Dashboard
 export default function AdminDashboard({ token, schedule, onError, onNotice, refreshAdmin, refreshAvailability }) {
   const [active, setActive] = useState('')
   const [pending, setPending] = useState([])
