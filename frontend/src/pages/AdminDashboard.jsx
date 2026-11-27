@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { minutesToTime, request, roomCodes, timeToMinutes, todayIST } from '../api'
 
 const ACTIONS = [
+  ['conflicts', 'Booking conflicts', 'Review CCC emails that overlap an existing booking.'],
   ['bookings', 'Bookings', 'Select a date to review, edit or remove confirmed bookings.'],
   ['requests', 'Faculty requests', 'Review pending terminal booking requests.'],
   ['maintenance', 'Room maintenance', 'Mark rooms unavailable or clear a maintenance window.'],
@@ -135,9 +136,19 @@ export default function AdminDashboard({ token, schedule, onError, onNotice, ref
   const [active, setActive] = useState('')
   const [pending, setPending] = useState([])
   const [emailLogs, setEmailLogs] = useState([])
+  const [conflicts, setConflicts] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
   const [rejectingId, setRejectingId] = useState(null)
   const [rejectionReason, setRejectionReason] = useState('')
+  const loadConflicts = useCallback(async () => {
+    try { setConflicts(await request('/admin/email-logs?status=CONFLICT', { token })) }
+    catch (error) { onError(error.message) }
+  }, [token, onError])
+  useEffect(() => {
+    loadConflicts()
+    const timer = window.setInterval(loadConflicts, 60_000)
+    return () => window.clearInterval(timer)
+  }, [loadConflicts])
   const loadActivity = useCallback(async () => {
     try {
       const [requests, emails, audit] = await Promise.all([
@@ -161,8 +172,10 @@ export default function AdminDashboard({ token, schedule, onError, onNotice, ref
   const activeAction = ACTIONS.find(([id]) => id === active)
   return <div className="space-y-6">
     <section className="rounded-2xl bg-slate-900 px-6 py-7 text-white sm:px-8"><p className="text-sm font-medium text-teal-300">CCC administration</p><h2 className="mt-2 text-3xl font-semibold">Admin dashboard</h2><p className="mt-2 text-sm text-slate-300">Choose an action to manage bookings, accounts, rooms and mail.</p></section>
+    {conflicts.length > 0 && <section role="alert" className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div><p className="font-semibold">{conflicts.length} booking conflict{conflicts.length === 1 ? '' : 's'} need review</p><p className="mt-1 text-sm">A CCC email overlaps an existing booking. No booking was changed automatically.</p></div><button className="button-secondary" onClick={() => setActive('conflicts')}>Review conflicts</button></section>}
     <section aria-label="Admin actions" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{ACTIONS.map(([id,title,description])=><button key={id} onClick={()=>setActive(active===id?'':id)} aria-expanded={active===id} className={`rounded-xl border p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow ${active===id?'border-teal-600 bg-teal-50 ring-1 ring-teal-600':'border-slate-200 bg-white'}`}><span className="flex items-center justify-between font-semibold">{title}<span aria-hidden="true" className="text-teal-700">{active===id?'−':'+'}</span></span><span className="mt-1 block text-sm text-slate-500">{description}</span></button>)}</section>
     {activeAction && <div className="space-y-5"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Admin action</p><h3 className="text-xl font-semibold">{activeAction[1]}</h3></div><button className="button-secondary" onClick={()=>setActive('')}>Close panel</button></div>
+      {active==='conflicts' && <Panel title="Conflicting CCC emails" action={<button className="button-secondary" onClick={loadConflicts}>Refresh now</button>}><p className="mb-4 text-sm text-slate-600">These incoming messages could not be booked because their time overlaps an existing confirmed booking. Review the details and decide how to handle the schedule; the tracker will not choose one automatically.</p><div className="space-y-3">{conflicts.length ? conflicts.map((email) => <article key={email.id} className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-semibold">{email.parsed?.room_code || 'Room not parsed'} · {email.parsed?.booking_date || 'Date not parsed'}</p><p className="mt-1 text-slate-700">{email.parsed?.start_time || '?'}–{email.parsed?.end_time || '?'} IST{email.parsed?.purpose ? ` · ${email.parsed.purpose}` : ''}</p></div><span className="badge">CONFLICT</span></div><p className="mt-2 text-xs text-slate-600">{email.subject || '(no subject)'} · {email.sender}{email.received_at ? ` · ${new Date(email.received_at).toLocaleString()}` : ''}</p><p className="mt-2 text-xs font-medium text-amber-900">{email.error || 'Overlaps an existing confirmed booking.'}</p></article>) : <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No booking conflict emails found.</p>}</div></Panel>}
       {active==='bookings' && <BookingManager token={token} onError={onError} onNotice={onNotice} refreshAvailability={refreshAvailability} />}
       {active==='accounts' && <CreateUser token={token} onError={onError} onNotice={onNotice} />}
       {active==='maintenance' && <MaintenanceManager token={token} onError={onError} onNotice={onNotice} refreshAvailability={refreshAvailability} />}
