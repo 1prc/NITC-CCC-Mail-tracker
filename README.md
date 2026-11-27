@@ -125,16 +125,6 @@ Contributions, suggestions, and improvements are welcome.
 3. Make your changes.
 4. Submit a pull request.
 
-## 👨‍💻 Author
-
-**Himanshu Mourya**
-
-M.Tech – Computer Science and Information Security  
-National Institute of Technology Calicut
-
-GitHub: https://github.com/1prc
-
----
 
 <p align="center">
   <b>NITC CCC Terminal Booking Tracker</b><br/>
