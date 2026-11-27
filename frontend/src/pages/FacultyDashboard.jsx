@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { minutesToTime, request, roomCodes, timeToMinutes, todayIST } from '../api'
 
+// Maintance Terminal availability
+
 const blankBooking = { room_code: 'T1', booking_date: todayIST(), start_time: '08:00', end_time: '09:00', purpose: '' }
 
 function Panel({ title, children, action }) {
